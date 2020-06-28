@@ -22,7 +22,7 @@
         parseHump: undefined,
         parseStyleObject: undefined,
         belt:{},
-        createBelt:undefined,
+        createRenderer:undefined,
         renderer:{}
     };
   
@@ -49,10 +49,10 @@
                     }
   
                     if ( !dev.isNull(elementMap[2]) ) {
-                        if (typeof elementMap[2][0] === "string") {
-                            element.textContent = elementMap[2][0];
-                        } else {
+                        if (Array.isArray(elementMap[2])) {
                             renderer(element, elementMap[2]);
+                        } else {
+                            element.textContent = elementMap[2];
                         }
                     }
   
@@ -69,9 +69,6 @@
             }
         } else {
             VRElement.element.textContent = value;
-            if (VRElement.children.length !== 0){
-                VRElement.children = [];
-            }
         }
     };
 
@@ -247,7 +244,7 @@
             i++;
         }
 
-        dev.createBelt();
+        dev.createRenderer();
     };
   
     dev.enumerableTree = function (tree, callback) {
@@ -340,7 +337,7 @@
         return temporary.join("");
     };
    
-    dev.createBelt = function () {
+    dev.createRenderer = function () {
         dev.belt = {};
         dev.renderer = {};
         dev.enumerableTree(dev.tree, function(VRElement){
@@ -352,18 +349,17 @@
                     dev.belt[names[i]].push(VRElement);
                 } else {
                     dev.belt[names[i]] = [VRElement];
-                    dev.renderer[name];
-                    const obj = {};
-                    obj[names[i]] = {
+                    dev.renderer[name] = undefined;
+                    Object.defineProperty(dev.renderer, names[i], {
                         get:function(){
                             return this[name];
                         },
                         set:function(value){
                             const VRElements = dev.belt[names[i]];
                             const VRElementsLength = VRElements.length;
-                            for(let j = 0;j<VRElementsLength;j++){
+                            for(let j = 0;j < VRElementsLength; j++){
                                 const VRElement = VRElements[j];
-                                const VRElementNames =VRElement.names;
+                                const VRElementNames = VRElement.names;
                                 const VRElementNamesLength = VRElementNames.length;
                                 const VRElementCommands = VRElement.commands;
                                 for(let k = 0; k < VRElementNamesLength; k++){
@@ -374,13 +370,79 @@
                             }
                             this[name] = value;
                         }
-                    };
-                    Object.defineProperties(dev.renderer,obj);
+                    });
                 }
+
+            }
+        });
+
+        dev.renderer["_style"] = undefined;
+        
+        Object.defineProperty(dev.renderer, "STYLE", {
+            get:function(){
+                return this["_style"];
+            },
+            set:function (styleArray) {
+                let i = 0;
+                const temporary = [];
+                const styleArrayLength = styleArray.length;
+                while (i < styleArrayLength) {
+                    temporary.push(styleArray[i][0]);
+                    temporary.push("{");
+                    temporary.push(dev.parseStyleObject(styleArray[i][1]));
+                    temporary.push("}");
+                    i++;
+                }
+                const styleString = temporary.join("");
+                i = 0;
+                const headTag = document.head;
+                const headChildren = headTag.children;
+                const headChildrenLength = headChildren.length;
+                let isHasStyleTag = false;
+                while (i < headChildrenLength) {
+                    if (headChildren[i].nodeName === "STYLE") {
+                        const styleTag = headChildren[i];
+                        const styleTagContent = styleTag.textContent;
+                        const regexp = styleString.replace(new RegExp(":(.+?);|\\.|\\[|\\]|\\{|\\}|\\*|\\+|\\||\\(|\\)|\\?|\\^|\\$", "g"), function(Keyword){
+                            switch (Keyword) {
+                                case ".": return "\\.";
+                                case "[": return "\\[";
+                                case "]": return "\\]";
+                                case "{": return "\\{";
+                                case "}": return "\\}";
+                                case "*": return "\\*";
+                                case "+": return "\\+";
+                                case "|": return "\\|";
+                                case "(": return "\\(";
+                                case ")": return "\\)";
+                                case "?": return "\\?";
+                                case "^": return "\\^";
+                                case "$": return "\\$";
+                                default: return ":(.+?);";
+                            }
+                        });
+                        if (styleTagContent.search(new RegExp(regexp)) === -1) {
+                            styleTag.textContent = [styleTagContent, styleString].join("");
+                        } else {
+                            styleTag.textContent = styleTagContent.replace(new RegExp(regexp), styleString);
+                        }
+                        isHasStyleTag = true;
+                        break;
+                    }
+                    i++;
+                }
+
+                if (!isHasStyleTag) {
+                    const styleTag = document.createElement("style");
+                    styleTag.textContent = styleString;
+                    headTag.appendChild(styleTag);
+                }
+
+                this["_style"] = styleArray;
             }
         });
     };
-      
+
     dev.createTree(document.body.children, dev.tree);
     const she = dev.renderer;
     
